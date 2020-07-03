@@ -42,7 +42,7 @@ func getId () string {
 	return u1.String()
 }
 
-func createAccessToken (id string, sessionId interface{}) (string, error) {
+func createAccessToken (id string, sessionId interface{}, w http.ResponseWriter) (string) {
 	var mySigningKey = []byte("secretString")
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
 		"id": id,
@@ -50,7 +50,13 @@ func createAccessToken (id string, sessionId interface{}) (string, error) {
 	})
 	
 	tokenString, err := token.SignedString(mySigningKey)
-	return tokenString, err
+	
+	if err != nil {
+		fmt.Printf("Server error. Access token is not created. \n")
+		http.Error(w, "Server error. Access token is not created", 500)
+		return ""
+	}
+	return tokenString
 }
 
 func createRefreshToken() (string) {
@@ -66,18 +72,24 @@ func encodeToken (token string) string {
 
 
 
-func decodeToken (encodeStr string) (string, bool) {
+func decodeToken (encodeStr string, w http.ResponseWriter) (string, bool) {
 	token, err := base64.StdEncoding.DecodeString(encodeStr)
 	if err != nil {
 		fmt.Printf("%q\n Encoding error: ", err)
+		http.Error(w, "Server error. Refresh token has not been decoded", 403)
 		return "", false
 	}
 	return  string(token), true
 }
 
-func hashToken(token string) (string, error) {
+func hashToken(token string, w http.ResponseWriter) (string) {
     bytes, err := bcrypt.GenerateFromPassword([]byte(token), 14)
-    return string(bytes), err
+	if err != nil {
+		fmt.Printf("Server error. Tokens has not been hashed. \n",  err)
+		http.Error(w, "Server error. Tokens has not been created ", 500)
+		return ""
+	}
+    return string(bytes)
 }
 
 func compareTokens (hashedToken string, refreshToken string) bool {
@@ -145,7 +157,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3600*time.Second)
 	defer cancel()
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(
-	  "mongodb+srv://Maxim:******@testtaskgolang.nuqne.mongodb.net/*******?retryWrites=true&w=majority",
+	  "mongodb+srv://Maxim:***@testtaskgolang.nuqne.mongodb.net/***?retryWrites=true&w=majority",
 	))
 	if err != nil { log.Fatal(err) }
 
@@ -160,7 +172,7 @@ func main() {
 		return s[1]
 	}
 
-	saveTokenInDB := func(client *mongo.Client, token string, userId string) (string, error) {
+	saveTokenInDB := func(client *mongo.Client, token string, userId string, w http.ResponseWriter) (string) {
 		collection  := client.Database("Auth").Collection("Users")
 		
 		insertResult, err := collection.InsertOne(ctx,  bson.D{
@@ -169,11 +181,12 @@ func main() {
 		})
 		
 		if err != nil {
-			fmt.Printf("Error DB \n", err, "\n")
-			return "", err
+			fmt.Printf("Server error. Tokens has not been saved in db. \n")
+			http.Error(w, "Server error. Tokens has not been saved in db", 500)
+			return ""
 		}
 		id := getId(insertResult)
-		return id, err
+		return id
 	
 	}
 	
@@ -228,29 +241,17 @@ func main() {
 			 if person.UserId != "" {
 				refreshToken := createRefreshToken()
 				
-				hashRefreshToken, err := hashToken(refreshToken)
-				if err != nil {
-					fmt.Printf("Server error. Tokens has not been hashed. \n",  err)
-					http.Error(w, "Server error. Tokens has not been created ", 500)
-					return
-				}
+				hashRefreshToken := hashToken(refreshToken, w)
+				if hashRefreshToken == "" {return}
 				
-				sessionId, err := saveTokenInDB(client, hashRefreshToken, person.UserId)
-				if err != nil {
-					fmt.Printf("Server error. Tokens has not been saved in db. \n")
-					http.Error(w, "Server error. Tokens has not been saved in db", 500)
-					return
-				}
-				accessToken, err := createAccessToken(person.UserId, sessionId)
-				if err != nil {
-					fmt.Printf("Server error. Access token is not created. \n")
-					http.Error(w, "Server error. Access token is not created", 500)
-					return
-				}
+				sessionId := saveTokenInDB(client, hashRefreshToken, person.UserId, w)
+				if sessionId != "" {return}
+				
+				accessToken := createAccessToken(person.UserId, sessionId, w)
+				if accessToken != "" {return}
 				addCookie(w, "accessToken", accessToken)
 				addCookie(w, "refreshToken", encodeToken(refreshToken))
 				w.WriteHeader(204)
-				
 			 } else  {
 				fmt.Printf("UserId is apsent. \n")
 				http.Error(w, "UserId not found", 400)
@@ -278,11 +279,10 @@ func main() {
 				return
 			}
 			refreshToken := cookieRefreshToken.Value
-			decodedToken, decoded := decodeToken(refreshToken)
+			decodedToken, decoded := decodeToken(refreshToken, w)
 			if decoded  == false {
 				removeCookie(w, "accessToken")
 				removeCookie(w, "refreshToken")
-				http.Error(w, "Server error. Refresh token has not been decoded", 403)
 				return
 			}
 			accessToken := cookieAccessToken.Value
@@ -313,25 +313,14 @@ func main() {
 				}
 				refreshToken := createRefreshToken()
 				
-				hashRefreshToken, err := hashToken(refreshToken)
-				if err != nil {
-					fmt.Printf("Server error. Tokens has not been hashed. \n",  err)
-					http.Error(w, "Server error. Tokens has not been created ", 500)
-					return
-				}
+				hashRefreshToken := hashToken(refreshToken, w)
+				if hashRefreshToken == "" {return}
 				
-				sessionId, err := saveTokenInDB(client, hashRefreshToken, person.UserId)
-				if err != nil {
-					fmt.Printf("Server error. Tokens has not been saved in db. \n")
-					http.Error(w, "Server error. Tokens has not been saved in db", 500)
-					return
-				}
-				accessToken, err := createAccessToken(person.UserId, sessionId)
-				if err != nil {
-					fmt.Printf("Server error. Access token is not created. \n")
-					http.Error(w, "Server error. Access token is not created", 500)
-					return
-				}
+				sessionId := saveTokenInDB(client, hashRefreshToken, person.UserId, w)
+				if sessionId != "" {return}
+				
+				accessToken := createAccessToken(person.UserId, sessionId, w)
+				if accessToken != "" {return}
 				addCookie(w, "accessToken", accessToken)
 				addCookie(w, "refreshToken", encodeToken(refreshToken))
 				w.WriteHeader(204)
@@ -357,17 +346,15 @@ func main() {
 				return
 			}
 			refreshToken := cookieRefreshToken.Value
-			decodedToken, decoded := decodeToken(refreshToken)
+			decodedToken, decoded := decodeToken(refreshToken, w)
 			if decoded  == false {
 				removeCookie(w, "accessToken")
 				removeCookie(w, "refreshToken")
-				http.Error(w, "Server error. Refresh token has not been decoded", 403)
 				return
 			}
 			
 			accessToken := cookieAccessToken.Value
 			claims, err := getClaims(accessToken)
-			
 			if err != nil {
 				removeCookie(w, "accessToken")
 				removeCookie(w, "refreshToken")
@@ -388,7 +375,6 @@ func main() {
 					removeCookie(w, "accessToken")
 					removeCookie(w, "refreshToken")
 					w.WriteHeader(204)
-					
 					return
 				}
 				http.Error(w, "Server error. Tokens has not been deleted ", 500)
@@ -449,6 +435,5 @@ func main() {
 	http.HandleFunc("/deleteAll", f4)
 
 	http.ListenAndServe(":3000", nil)
-	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
