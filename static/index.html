@@ -1,0 +1,91 @@
+<html>
+	<header>
+		<script src="https://unpkg.com/uuid@latest/dist/umd/uuidv4.min.js"></script>
+	</header>
+	<body>
+		<div>Hello golang</div>
+		<div id='buttons' style="display:flex; flex-direction:column; width: 300px">
+			<button id='createClient' style="width: 150px">
+					Создать клиента
+			</button>
+			<div id='clientInfo' style="margin-top: 15px; margin-bottom:20px"></div>
+			<div style="display:flex; width:300px; border-color: blue">
+				<button id='first'>
+					Первый путь
+				</button>
+				<button id='second'>
+					Второй путь
+				</button>
+				<button id='third'>
+					Третий путь
+				</button>
+				<button id='fourth'>
+					Четвёрный путь
+				</button>
+			</div>
+		</div>
+	</body>
+	<script>
+		const buttonsDiv = document.getElementById('buttons');
+		console.log(buttonsDiv)
+		let userId = undefined;
+		const handlers = {
+			async first() {
+				const response  = await fetch("/releaseTokens", {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json;charset=utf-8'
+					},
+					body: JSON.stringify({UserId:"159-753-456"})
+				})
+				//let result = await response.json();
+				console.log(response.status)
+			},
+			async second() {
+				const response  = await fetch("/refresh", {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json;charset=utf-8'
+					},
+					body: JSON.stringify({UserId:"159-753-456"})
+				})
+				//let result = await response.json();
+				console.log(response.status)
+			},
+			async third() {
+				const response  = await fetch("/delete", {
+					method: 'DELETE',
+					headers: {
+						'Content-Type': 'application/json;charset=utf-8'
+					},
+					body: JSON.stringify({UserId:"159-753-456"})
+				})
+				//let result = await response.json();
+				console.log(response.status)
+			},
+			async fourth() {
+				const response  = await fetch("/deleteAll", {
+					method: 'DELETE',
+					headers: {
+						'Content-Type': 'application/json;charset=utf-8'
+					},
+					body: JSON.stringify({UserId:"159-753-456"})
+				})
+				//let result = await response.json();
+				console.log(response.status)
+			},
+			async createClient() {},
+			
+		}
+		buttonsDiv.addEventListener('click', (event) => {
+			const {target} = event;
+			const {id} = target;
+			if (id) {
+				const handler = handlers[id];
+				handler();
+			}
+			
+		})
+	
+	</script>
+</html>
