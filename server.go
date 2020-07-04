@@ -157,7 +157,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3600*time.Second)
 	defer cancel()
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(
-	  "mongodb+srv://Maxim:***@testtaskgolang.nuqne.mongodb.net/***?retryWrites=true&w=majority",
+	  "mongodb+srv://Maxim:MaximTestGolang@testtaskgolang.nuqne.mongodb.net/testTaskGolang?retryWrites=true&w=majority",
 	))
 	if err != nil { log.Fatal(err) }
 
@@ -245,10 +245,10 @@ func main() {
 				if hashRefreshToken == "" {return}
 				
 				sessionId := saveTokenInDB(client, hashRefreshToken, person.UserId, w)
-				if sessionId != "" {return}
+				if sessionId == "" {return}
 				
 				accessToken := createAccessToken(person.UserId, sessionId, w)
-				if accessToken != "" {return}
+				if accessToken == "" {return}
 				addCookie(w, "accessToken", accessToken)
 				addCookie(w, "refreshToken", encodeToken(refreshToken))
 				w.WriteHeader(204)
@@ -317,10 +317,10 @@ func main() {
 				if hashRefreshToken == "" {return}
 				
 				sessionId := saveTokenInDB(client, hashRefreshToken, person.UserId, w)
-				if sessionId != "" {return}
+				if sessionId == "" {return}
 				
 				accessToken := createAccessToken(person.UserId, sessionId, w)
-				if accessToken != "" {return}
+				if accessToken == "" {return}
 				addCookie(w, "accessToken", accessToken)
 				addCookie(w, "refreshToken", encodeToken(refreshToken))
 				w.WriteHeader(204)
