@@ -218,39 +218,106 @@ func main() {
 	
 	findUser := func(client *mongo.Client, sessionId string) (Person, error) {
 		var person Person
-		docID, err := primitive.ObjectIDFromHex(sessionId)
-		
 		collection  := client.Database("Auth").Collection("Users")
-		err = collection.FindOne(ctx, bson.M{"_id": docID}).Decode(&person)
-		if  err != nil {
-			return person, err
-		}
 		
-		return person, err
+		wc := writeconcern.New(writeconcern.WMajority())
+		rc := readconcern.Snapshot()
+		txnOpts := options.Transaction().SetWriteConcern(wc).SetReadConcern(rc)
+
+		session, err := client.StartSession()
+		if err != nil {return person, err}
+		defer session.EndSession(ctx)
+		
+		err = mongo.WithSession(ctx, session, func(sessionContext mongo.SessionContext) (error) {
+			if err = session.StartTransaction(txnOpts); err != nil {
+				return err
+			}
+			docID, err := primitive.ObjectIDFromHex(sessionId)
+			
+			err = collection.FindOne(ctx, bson.M{"_id": docID}).Decode(&person)
+			if  err != nil {return  err}
+			return nil
+		})
+		if err != nil {
+		    if abortErr := session.AbortTransaction(ctx); abortErr != nil {
+				fmt.Printf("User dont found. \n", abortErr, "\n")
+				return person,  err
+			}
+			
+		}
+		return person,  err	
 	}
 	
 	deleteToken := func(client *mongo.Client, sessionId string) (bool) {
 		docID, err := primitive.ObjectIDFromHex(sessionId)
 		collection  := client.Database("Auth").Collection("Users")
+		
+		wc := writeconcern.New(writeconcern.WMajority())
+		rc := readconcern.Snapshot()
+		txnOpts := options.Transaction().SetWriteConcern(wc).SetReadConcern(rc)
 
-		deleteResult, err := collection.DeleteOne(ctx, bson.M{"_id": docID})
-		if err == nil {
-			fmt.Printf("Deleted %v document in the Auth collection\n", deleteResult.DeletedCount)
-			return true
+		session, err := client.StartSession()
+		if err != nil {
+			return false
 		}
-
-		return false
+		defer session.EndSession(ctx)
+		
+		err = mongo.WithSession(ctx, session, func(sessionContext mongo.SessionContext) (error) {
+			if err = session.StartTransaction(txnOpts); err != nil {
+				return err
+			}
+			
+			deleteResult, err := collection.DeleteOne(ctx, bson.M{"_id": docID})
+			if err != nil {
+				fmt.Printf("The token have not been deleted \n", err, "\n")	
+				return err
+			}
+			fmt.Printf("Deleted %v document in the Auth collection\n", deleteResult.DeletedCount)
+			return nil
+		})
+		
+		if err != nil {
+			if abortErr := session.AbortTransaction(ctx); abortErr != nil {
+				fmt.Printf("Abborted error. \n", abortErr, "\n")	
+			}
+			return false
+		}
+		return true
 	}
 	
 	deleteAllToken := func(client *mongo.Client, userId string) (bool) {
 		collection  := client.Database("Auth").Collection("Users")
-		deleteResult, err := collection.DeleteMany(ctx, bson.M{"userId": userId})
-		if err == nil {
-			fmt.Printf("Deleted %v documents in the Auth collection\n", deleteResult.DeletedCount)
-			return true
-		}
+		wc := writeconcern.New(writeconcern.WMajority())
+		rc := readconcern.Snapshot()
+		txnOpts := options.Transaction().SetWriteConcern(wc).SetReadConcern(rc)
 
-		return false
+		session, err := client.StartSession()
+		if err != nil {
+			return false
+		}
+		defer session.EndSession(ctx)
+		
+		err = mongo.WithSession(ctx, session, func(sessionContext mongo.SessionContext) (error) {
+			if err = session.StartTransaction(txnOpts); err != nil {
+				return err
+			}
+			deleteResult, err := collection.DeleteMany(ctx, bson.M{"userId": userId})
+			if err != nil {
+				fmt.Printf("The tokens have not been deleted \n", err, "\n")	
+				return err
+			}
+			fmt.Printf("Deleted %v documents in the Auth collection\n", deleteResult.DeletedCount)
+			return nil
+		})	
+		
+		if err != nil {
+			if abortErr := session.AbortTransaction(ctx); abortErr != nil {
+				fmt.Printf("Abborted error. \n", abortErr, "\n")	
+			}
+			return false
+		}
+		return true
+		
 	}
 	
 	f1 := func(w http.ResponseWriter, r *http.Request) {
