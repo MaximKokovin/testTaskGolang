@@ -17,6 +17,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 )	
 
 type Claims struct {
@@ -173,21 +175,45 @@ func main() {
 	}
 
 	saveTokenInDB := func(client *mongo.Client, token string, userId string, w http.ResponseWriter) (string) {
+		var id string
 		collection  := client.Database("Auth").Collection("Users")
 		
-		insertResult, err := collection.InsertOne(ctx,  bson.D{
-			{Key: "userId", Value: userId},
-			{Key: "token", Value: token},
-		})
-		
+		wc := writeconcern.New(writeconcern.WMajority())
+		rc := readconcern.Snapshot()
+		txnOpts := options.Transaction().SetWriteConcern(wc).SetReadConcern(rc)
+
+		session, err := client.StartSession()
 		if err != nil {
-			fmt.Printf("Server error. Tokens has not been saved in db. \n")
-			http.Error(w, "Server error. Tokens has not been saved in db", 500)
+			panic(err)
+		}
+		defer session.EndSession(ctx)
+
+		err = mongo.WithSession(ctx, session, func(sessionContext mongo.SessionContext) (error) {
+			if err = session.StartTransaction(txnOpts); err != nil {
+				return err
+			}
+			insertResult, err := collection.InsertOne(ctx,  bson.D{
+				{Key: "userId", Value: userId},
+				{Key: "token", Value: token},
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Println(insertResult.InsertedID)
+			if err = session.CommitTransaction(sessionContext); err != nil {
+				return err
+			}
+			id = getId(insertResult)
+			return nil
+		})
+		if err != nil {
+		    if abortErr := session.AbortTransaction(ctx); abortErr != nil {
+				fmt.Printf("Server error. Tokens has not been saved in db. \n", abortErr, "/n")
+				http.Error(w, "Server error. Tokens has not been saved in db", 500)
+			}
 			return ""
 		}
-		id := getId(insertResult)
-		return id
-	
+		return id	
 	}
 	
 	findUser := func(client *mongo.Client, sessionId string) (Person, error) {
@@ -245,10 +271,12 @@ func main() {
 				if hashRefreshToken == "" {return}
 				
 				sessionId := saveTokenInDB(client, hashRefreshToken, person.UserId, w)
-				if sessionId == "" {return}
 				
+				if sessionId == "" {return}
 				accessToken := createAccessToken(person.UserId, sessionId, w)
+				
 				if accessToken == "" {return}
+
 				addCookie(w, "accessToken", accessToken)
 				addCookie(w, "refreshToken", encodeToken(refreshToken))
 				w.WriteHeader(204)
