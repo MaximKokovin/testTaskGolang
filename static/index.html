@@ -1,13 +1,15 @@
 <html>
 	<header>
-		<script src="https://unpkg.com/uuid@latest/dist/umd/uuidv4.min.js"></script>
 	</header>
 	<body>
 		<div>Hello golang</div>
 		<div id='buttons' style="display:flex; flex-direction:column; width: 300px">
-			<button id='createClient' style="width: 150px">
-					Создать клиента
-			</button>
+			<div id="users" style="display:flex; flex-direction:column; width:50px">
+				<div id="c86f6a63-697e-4f42-a551-46e89f2bec4e">User 1</div>
+				<div id="2914bc31-2df4-4333-bcf6-bb3303e330d0">User 2</div>
+				<div id="8ed0e2b7-25b6-4ff4-aa85-d637966a141b">User 3</div>
+				<div id="83c167d5-aa13-4d05-907d-705135e036c0">User 4</div>
+			</div>
 			<div id='clientInfo' style="margin-top: 15px; margin-bottom:20px"></div>
 			<div style="display:flex; width:300px; border-color: blue">
 				<button id='first'>
@@ -26,65 +28,53 @@
 		</div>
 	</body>
 	<script>
+		let activeUsers = undefined;
 		const buttonsDiv = document.getElementById('buttons');
-		console.log(buttonsDiv)
-		let userId = undefined;
-		const handlers = {
-			async first() {
-				const response  = await fetch("/releaseTokens", {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json;charset=utf-8'
-					},
-					body: JSON.stringify({UserId:"159-753-456"})
-				})
-				//let result = await response.json();
-				console.log(response.status)
-			},
-			async second() {
-				const response  = await fetch("/refresh", {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json;charset=utf-8'
-					},
-					body: JSON.stringify({UserId:"159-753-456"})
-				})
-				//let result = await response.json();
-				console.log(response.status)
-			},
-			async third() {
-				const response  = await fetch("/delete", {
-					method: 'DELETE',
-					headers: {
-						'Content-Type': 'application/json;charset=utf-8'
-					},
-					body: JSON.stringify({UserId:"159-753-456"})
-				})
-				//let result = await response.json();
-				console.log(response.status)
-			},
-			async fourth() {
-				const response  = await fetch("/deleteAll", {
-					method: 'DELETE',
-					headers: {
-						'Content-Type': 'application/json;charset=utf-8'
-					},
-					body: JSON.stringify({UserId:"159-753-456"})
-				})
-				//let result = await response.json();
-				console.log(response.status)
-			},
-			async createClient() {},
-			
+		const usersDiv = document.getElementById('users');
+		const router = {
+			first: ["POST", "/releaseTokens"],
+			second: ["POST", "/refresh"],
+			third: ["DELETE", "/delete"],
+			fourth: ["DELETE", "/deleteAll"],
 		}
+		const sendRequest = async (method, rout) => {
+			const response  = await fetch(rout, {
+					method: method,
+					headers: {
+						'Content-Type': 'application/json;charset=utf-8'
+					},
+					body: JSON.stringify({UserId:activeUsers})
+			})
+
+			console.log(response.status)
+		}
+		
 		buttonsDiv.addEventListener('click', (event) => {
 			const {target} = event;
 			const {id} = target;
-			if (id) {
-				const handler = handlers[id];
-				handler();
+			if (!activeUsers) {
+				alert('Check a user');
+				return;
 			}
-			
+			if (id) {
+				const rout = router[id];
+				const [method, routName] = rout;
+				sendRequest(method, routName);
+			}
+			return false
+		})
+		
+		usersDiv.addEventListener('click', (event) => {
+			event.stopPropagation() 
+			const {target} = event;
+			const {id} = target;
+			const elem = document.querySelector('DIV[style*="red"]');
+
+			if (elem) elem.style.background = "white";
+			if (id) {
+				event.target.style.background = 'red';
+				activeUsers= id;
+			}
 		})
 	
 	</script>
