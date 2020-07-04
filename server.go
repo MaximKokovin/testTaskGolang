@@ -128,6 +128,17 @@ func checkToken (token string) (bool) {
 	return true
 }
 
+func parseTokens (r *http.Request) (string, string) {
+	cookieRefreshToken, err := r.Cookie("refreshToken")
+	cookieAccessToken, err := r.Cookie("accessToken")				
+	if err != nil {
+		return "", ""
+	}
+	refreshToken := cookieRefreshToken.Value
+	accessToken := cookieAccessToken.Value
+	return accessToken, refreshToken
+}
+
 func getClaims (token string) (*Claims, error) {
 	var jwtKey = []byte("secretString")
 	claims := &Claims{}
@@ -320,8 +331,38 @@ func main() {
 		
 	}
 	
-	f1 := func(w http.ResponseWriter, r *http.Request) {
+	
+	isSessionInterrupted := func (w http.ResponseWriter, r *http.Request) {
+		path := "./static/index.html"
+		accessToken, refreshToken := parseTokens(r)
+		if accessToken == "" || refreshToken == "" {
+			http.ServeFile(w, r, path)
+			return
+		}
 		
+		claims, err := getClaims(accessToken)
+		if err != nil {
+			removeCookie(w, "accessToken")
+			removeCookie(w, "refreshToken")
+			http.ServeFile(w, r, path)
+			return
+		}
+		user, err := findUser(client, claims.SessionId)
+		fmt.Printf("user.UserId++++++++++ \n", user.UserId)
+		if err == nil || user.UserId == "" {
+			removeCookie(w, "accessToken")
+			removeCookie(w, "refreshToken")
+			http.ServeFile(w, r, path)
+			return
+		}
+		http.ServeFile(w, r, path)
+	}
+	
+	f0 := func(w http.ResponseWriter, r *http.Request) {
+		isSessionInterrupted(w, r)
+	}
+	
+	f1 := func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			var person Person
 			fmt.Printf("/releaseTokens \n", )
@@ -330,8 +371,8 @@ func main() {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-
-			 if person.UserId != "" {
+			
+			if person.UserId != "" {
 				refreshToken := createRefreshToken()
 				
 				hashRefreshToken := hashToken(refreshToken, w)
@@ -366,21 +407,21 @@ func main() {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			
-			cookieRefreshToken, err := r.Cookie("refreshToken")
-			cookieAccessToken, err := r.Cookie("accessToken")				
-			if err != nil {
-				http.Error(w, " Token not found", 403)
+			accessToken, refreshToken := parseTokens(r)
+			if accessToken == "" || refreshToken == "" {
+				removeCookie(w, "accessToken")
+				removeCookie(w, "refreshToken")
+				http.Error(w, "Token is bad", 403)
 				return
 			}
-			refreshToken := cookieRefreshToken.Value
+			
 			decodedToken, decoded := decodeToken(refreshToken, w)
 			if decoded  == false {
 				removeCookie(w, "accessToken")
 				removeCookie(w, "refreshToken")
 				return
 			}
-			accessToken := cookieAccessToken.Value
+
 			claims, err := getClaims(accessToken)
 			
 			if err != nil {
@@ -434,13 +475,14 @@ func main() {
 	
 	f3 := func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "DELETE" {
-			cookieRefreshToken, err := r.Cookie("refreshToken");
-			cookieAccessToken, err := r.Cookie("accessToken")				
-			if err  != nil {
-				http.Error(w, "Server error. Token not passed", 403)
+			accessToken, refreshToken := parseTokens(r)
+			if accessToken == "" || refreshToken == "" {
+				removeCookie(w, "accessToken")
+				removeCookie(w, "refreshToken")
+				http.Error(w, "Token is bad", 403)
 				return
 			}
-			refreshToken := cookieRefreshToken.Value
+			
 			decodedToken, decoded := decodeToken(refreshToken, w)
 			if decoded  == false {
 				removeCookie(w, "accessToken")
@@ -448,7 +490,6 @@ func main() {
 				return
 			}
 			
-			accessToken := cookieAccessToken.Value
 			claims, err := getClaims(accessToken)
 			if err != nil {
 				removeCookie(w, "accessToken")
@@ -523,7 +564,7 @@ func main() {
 		}
 	}
 	
-	http.Handle("/", http.FileServer(http.Dir("./static")))
+	http.HandleFunc("/", f0)
 	http.HandleFunc("/releaseTokens", f1)
 	http.HandleFunc("/refresh", f2)
 	http.HandleFunc("/delete", f3)
