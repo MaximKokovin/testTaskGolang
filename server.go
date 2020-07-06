@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"fmt"
 	"log"
 	"time"
@@ -40,8 +41,9 @@ type Person struct {
 }
 
 func getId () string {
-	u1 := uuid.Must(uuid.NewV4())
-	return u1.String()
+	u2:= uuid.NewV4()
+
+	return u2.String()
 }
 
 func createAccessToken (id string, sessionId interface{}, w http.ResponseWriter) (string) {
@@ -160,17 +162,27 @@ func removeCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &cookie)
 }
 
+func determineListenAddress() (string, error) {
+  port := os.Getenv("PORT")
+  if port == "" {
+    return "", fmt.Errorf("$PORT not set")
+  }
+  return ":" + port, nil
+}
 
 func main() {	
-	
+	addres, err := determineListenAddress()
+	if err != nil {
+		log.Fatal("Address: ", err)
+	 }
 	type Users struct {
 		name string 
 		token string 
 	}	
-	ctx, cancel := context.WithTimeout(context.Background(), 3600*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 36000*time.Second)
 	defer cancel()
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(
-	  "mongodb+srv://Maxim:***@testtaskgolang.nuqne.mongodb.net/***?retryWrites=true&w=majority",
+	  "mongodb+srv://Maxim:testGolang@testtaskgolang.nuqne.mongodb.net/MaximTestGolang?retryWrites=true&w=majority",
 	))
 	if err != nil { log.Fatal(err) }
 
@@ -217,11 +229,13 @@ func main() {
 			id = getId(insertResult)
 			return nil
 		})
+
 		if err != nil {
 		    if abortErr := session.AbortTransaction(ctx); abortErr != nil {
 				fmt.Printf("Server error. Tokens has not been saved in db. \n", abortErr, "/n")
 				http.Error(w, "Server error. Tokens has not been saved in db", 500)
 			}
+			fmt.Printf("Server error. Tokens has not been saved in db2. \n", err, "/n")
 			return ""
 		}
 		return id	
@@ -347,9 +361,9 @@ func main() {
 			http.ServeFile(w, r, path)
 			return
 		}
+
 		user, err := findUser(client, claims.SessionId)
-		fmt.Printf("user.UserId++++++++++ \n", user.UserId)
-		if err == nil || user.UserId == "" {
+		if err != nil || user.UserId == "" {
 			removeCookie(w, "accessToken")
 			removeCookie(w, "refreshToken")
 			http.ServeFile(w, r, path)
@@ -365,26 +379,23 @@ func main() {
 	f1 := func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			var person Person
-			fmt.Printf("/releaseTokens \n", )
 			err := json.NewDecoder(r.Body).Decode(&person)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			
+
 			if person.UserId != "" {
 				refreshToken := createRefreshToken()
 				
 				hashRefreshToken := hashToken(refreshToken, w)
 				if hashRefreshToken == "" {return}
-				
 				sessionId := saveTokenInDB(client, hashRefreshToken, person.UserId, w)
 				
 				if sessionId == "" {return}
 				accessToken := createAccessToken(person.UserId, sessionId, w)
-				
+				fmt.Printf("/person.UserId \n", person.UserId)
 				if accessToken == "" {return}
-
 				addCookie(w, "accessToken", accessToken)
 				addCookie(w, "refreshToken", encodeToken(refreshToken))
 				w.WriteHeader(204)
@@ -569,7 +580,13 @@ func main() {
 	http.HandleFunc("/refresh", f2)
 	http.HandleFunc("/delete", f3)
 	http.HandleFunc("/deleteAll", f4)
-
-	http.ListenAndServe(":3000", nil)
+	
+	fmt.Printf("port: ", addres)
+	
+	errorListen := http.ListenAndServe(addres, nil)
+	fmt.Printf("errorListen: ", errorListen)
+	if errorListen != nil {
+		log.Fatal(errorListen)
+	}
 }
 
